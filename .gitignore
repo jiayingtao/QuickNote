@@ -1,0 +1,58 @@
+## .NET / Visual Studio / Rider
+
+# Build results
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.cache
+*.sln.docstates
+*.userosscache
+*.sln.ide
+
+# Visual Studio
+.vs/
+*.vssscc
+*.vspscc
+*.vsp
+*.psess
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.pfx
+*.publishsettings
+
+# Rider / ReSharper
+_ReSharper.Caches/
+*.sln.iml
+*.DotSettings.user
+.idea/
+
+# AI assistant
+.qoder/
+
+# VS Code
+.vscode/
+
+# NuGet
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+**/[Pp]ackages/repositories.config
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Windows Store app package directories
+AppPackages/
+BundleArtifacts/
+
+# Others
+*.log
+*.tmp
+*.swp
+*~
