@@ -109,9 +109,50 @@ public partial class App : WpfApplication
         contextMenu.Items.Add("退出", null, (_, _) => ExitApp());
 
         _trayIcon.ContextMenuStrip = contextMenu;
+        _trayIcon.Click += (_, _) => ShowAllWindows();
         _trayIcon.DoubleClick += (_, _) => ShowAllWindows();
 
         UpdateTrayCount();
+
+        EnsureTrayIconPromoted();
+    }
+
+    /// <summary>
+    /// Windows may forget the tray icon visibility preference when the app auto-starts
+    /// before Explorer fully initializes. This method waits briefly for the registry entry
+    /// to be created, then restores the IsPromoted value from AppSettings (persisted on exit).
+    /// </summary>
+    private void EnsureTrayIconPromoted()
+    {
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Thread.Sleep(500);
+            try
+            {
+                var exePath = Environment.ProcessPath ?? "";
+                using var baseKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Control Panel\NotifyIconSettings", writable: false);
+                if (baseKey is null) return;
+
+                foreach (var subKeyName in baseKey.GetSubKeyNames())
+                {
+                    using var subKey = baseKey.OpenSubKey(subKeyName, writable: true);
+                    if (subKey is null) continue;
+
+                    var path = subKey.GetValue("ExecutablePath") as string;
+                    if (string.Equals(path, exePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var value = _appSettings.TrayIconVisible ? 1 : 0;
+                        subKey.SetValue("IsPromoted", value, Microsoft.Win32.RegistryValueKind.DWord);
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                // Best-effort: silently ignore if registry access fails
+            }
+        });
     }
 
     private void UpdateTrayCount()
@@ -225,11 +266,46 @@ public partial class App : WpfApplication
 
     private void ExitApp()
     {
+        SaveTrayIconState();
         _trayIcon!.Visible = false;
         _mainVm.SaveNow();
         foreach (var window in _windows.Values)
             window.Close();
         Shutdown();
+    }
+
+    /// <summary>
+    /// Read the current tray icon visibility from Windows registry and persist it
+    /// to AppSettings, so the same state can be restored on next launch.
+    /// </summary>
+    private void SaveTrayIconState()
+    {
+        try
+        {
+            var exePath = Environment.ProcessPath ?? "";
+            using var baseKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Control Panel\NotifyIconSettings", writable: false);
+            if (baseKey is null) return;
+
+            foreach (var subKeyName in baseKey.GetSubKeyNames())
+            {
+                using var subKey = baseKey.OpenSubKey(subKeyName, writable: false);
+                if (subKey is null) continue;
+
+                var path = subKey.GetValue("ExecutablePath") as string;
+                if (string.Equals(path, exePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    var promoted = subKey.GetValue("IsPromoted") is int val ? val : 1;
+                    _appSettings.TrayIconVisible = promoted != 0;
+                    _settingsService.Save(_appSettings);
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort: silently ignore if registry access fails
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

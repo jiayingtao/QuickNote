@@ -6,12 +6,19 @@ namespace QuickNote.Models;
 public class AppSettings : INotifyPropertyChanged
 {
     private bool _autoStart;
+    private bool _trayIconVisible = true;
     private string _defaultColor = "Yellow";
 
     public bool AutoStart
     {
         get => _autoStart;
         set { _autoStart = value; OnPropertyChanged(); }
+    }
+
+    public bool TrayIconVisible
+    {
+        get => _trayIconVisible;
+        set { _trayIconVisible = value; OnPropertyChanged(); }
     }
 
     public string DefaultColor
