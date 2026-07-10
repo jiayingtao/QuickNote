@@ -6,18 +6,6 @@ using System.Windows.Media;
 using QuickNote.Models;
 using QuickNote.ViewModels;
 
-using Point = System.Windows.Point;
-using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using MouseEventArgs = System.Windows.Input.MouseEventArgs;
-using DragEventArgs = System.Windows.DragEventArgs;
-using DragDropEffects = System.Windows.DragDropEffects;
-using Color = System.Windows.Media.Color;
-using ColorConverter = System.Windows.Media.ColorConverter;
-using MessageBox = System.Windows.MessageBox;
-using MessageBoxButton = System.Windows.MessageBoxButton;
-using MessageBoxImage = System.Windows.MessageBoxImage;
-using MessageBoxResult = System.Windows.MessageBoxResult;
-
 namespace QuickNote.Views;
 
 public partial class NoteWindow : Window

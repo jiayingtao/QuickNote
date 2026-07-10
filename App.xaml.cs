@@ -1,19 +1,16 @@
-using System.Drawing;
 using System.Reflection;
 using System.Threading;
 using System.Windows;
-using System.Windows.Forms;
+using System.Windows.Controls;
+using Hardcodet.Wpf.TaskbarNotification;
 using QuickNote.Models;
 using QuickNote.Services;
 using QuickNote.ViewModels;
 using QuickNote.Views;
 
-// Explicit alias: Application refers to WPF's Application
-using WpfApplication = System.Windows.Application;
-
 namespace QuickNote;
 
-public partial class App : WpfApplication
+public partial class App : Application
 {
     private const string MutexName = "QuickNote_SingleInstance_Mutex";
     private const string WakeEventName = "QuickNote_WakeUp_Event";
@@ -22,8 +19,8 @@ public partial class App : WpfApplication
     private DataService _dataService = null!;
     private SettingsService _settingsService = null!;
     private AppSettings _appSettings = null!;
-    private NotifyIcon? _trayIcon;
-    private ToolStripItem? _showAllMenuItem;
+    private TaskbarIcon? _trayIcon;
+    private MenuItem? _showAllMenuItem;
     private readonly Dictionary<Note, NoteWindow> _windows = new();
     private Mutex? _mutex;
     private EventWaitHandle? _wakeEvent;
@@ -93,24 +90,45 @@ public partial class App : WpfApplication
     {
         using var stream = Assembly.GetExecutingAssembly()
             .GetManifestResourceStream("QuickNote.Assets.app.ico");
-        _trayIcon = new NotifyIcon
+        var iconImage = new System.Windows.Media.Imaging.BitmapImage();
+        iconImage.BeginInit();
+        iconImage.StreamSource = stream;
+        iconImage.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        iconImage.EndInit();
+
+        var contextMenu = new ContextMenu();
+
+        var newNoteItem = new MenuItem { Header = "新建便签" };
+        newNoteItem.Click += (_, _) => CreateAndShowNewNote();
+        contextMenu.Items.Add(newNoteItem);
+
+        _showAllMenuItem = new MenuItem();
+        _showAllMenuItem.Click += (_, _) => ShowAllWindows();
+        contextMenu.Items.Add(_showAllMenuItem);
+
+        var hideAllItem = new MenuItem { Header = "隐藏所有" };
+        hideAllItem.Click += (_, _) => HideAllWindows();
+        contextMenu.Items.Add(hideAllItem);
+
+        contextMenu.Items.Add(new Separator());
+
+        var settingsItem = new MenuItem { Header = "设置" };
+        settingsItem.Click += (_, _) => OpenSettings();
+        contextMenu.Items.Add(settingsItem);
+
+        var exitItem = new MenuItem { Header = "退出" };
+        exitItem.Click += (_, _) => ExitApp();
+        contextMenu.Items.Add(exitItem);
+
+        _trayIcon = new TaskbarIcon
         {
-            Text = "QuickNote",
-            Icon = new Icon(stream!),
-            Visible = true
+            ToolTipText = "QuickNote",
+            IconSource = iconImage,
+            ContextMenu = contextMenu
         };
 
-        var contextMenu = new ContextMenuStrip();
-        contextMenu.Items.Add("新建便签", null, (_, _) => CreateAndShowNewNote());
-        _showAllMenuItem = contextMenu.Items.Add("显示所有", null, (_, _) => ShowAllWindows());
-        contextMenu.Items.Add("隐藏所有", null, (_, _) => HideAllWindows());
-        contextMenu.Items.Add(new ToolStripSeparator());
-        contextMenu.Items.Add("设置", null, (_, _) => OpenSettings());
-        contextMenu.Items.Add("退出", null, (_, _) => ExitApp());
-
-        _trayIcon.ContextMenuStrip = contextMenu;
-        _trayIcon.Click += (_, _) => ShowAllWindows();
-        _trayIcon.DoubleClick += (_, _) => ShowAllWindows();
+        _trayIcon.TrayMouseDoubleClick += (_, _) => ShowAllWindows();
+        _trayIcon.TrayLeftMouseDown += (_, _) => ShowAllWindows();
 
         UpdateTrayCount();
 
@@ -159,7 +177,7 @@ public partial class App : WpfApplication
     {
         if (_showAllMenuItem is null) return;
         var count = _mainVm.Notes.Count;
-        _showAllMenuItem.Text = $"显示所有 ({count})";
+        _showAllMenuItem.Header = $"显示所有 ({count})";
     }
 
     private void ShowNoteWindow(Note note)
@@ -237,7 +255,7 @@ public partial class App : WpfApplication
 
     private void OpenSettings()
     {
-        foreach (System.Windows.Window window in WpfApplication.Current.Windows)
+        foreach (System.Windows.Window window in Application.Current.Windows)
         {
             if (window is SettingsWindow settingsWin)
             {
@@ -267,7 +285,6 @@ public partial class App : WpfApplication
     private void ExitApp()
     {
         SaveTrayIconState();
-        _trayIcon!.Visible = false;
         _mainVm.SaveNow();
         foreach (var window in _windows.Values)
             window.Close();

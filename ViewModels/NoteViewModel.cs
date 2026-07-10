@@ -6,9 +6,6 @@ using System.Windows.Input;
 using System.Windows.Markup;
 using QuickNote.Models;
 
-// Avoid ambiguity with System.Windows.Forms.RichTextBox
-using RichTextBox = System.Windows.Controls.RichTextBox;
-
 namespace QuickNote.ViewModels;
 
 public class NoteViewModel : ViewModelBase

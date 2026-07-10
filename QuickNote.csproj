@@ -3,9 +3,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
@@ -15,12 +14,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Assets\app.ico" />
   </ItemGroup>
 
   <!-- Clean up intermediate build output after publish, keep only bin\Release\ -->
   <Target Name="CleanPublishIntermediate" AfterTargets="Publish">
     <RemoveDir Directories="bin\Release\net10.0-windows" />
+    <Delete Files="bin\Release\Hardcodet.NotifyIcon.Wpf.dll;bin\Release\QuickNote.deps.json;bin\Release\QuickNote.dll;bin\Release\QuickNote.runtimeconfig.json" />
   </Target>
 
 </Project>
