@@ -147,25 +147,44 @@ public class NoteViewModel : ViewModelBase
                 doc = new FlowDocument();
             }
         }
-        ApplyTightLineSpacing(doc);
+        ApplyLineSpacing(doc);
         return doc;
     }
 
-    /// <summary>Apply tight line spacing to FlowDocument and all Paragraphs.</summary>
-    public static void ApplyTightLineSpacing(FlowDocument doc)
+    /// <summary>Font size of the note editor, kept in sync with NoteWindow.xaml.</summary>
+    private const double EditorFontSize = 13;
+
+    /// <summary>Line spacing multiple of the font size (1.0 = single spacing).</summary>
+    private const double LineSpacingFactor = 1.5;
+
+    private const double EditorLineHeight = EditorFontSize * LineSpacingFactor;
+
+    /// <summary>Apply line spacing to FlowDocument and all Paragraphs.</summary>
+    public static void ApplyLineSpacing(FlowDocument doc)
     {
-        doc.LineHeight = 13;
+        doc.LineHeight = EditorLineHeight;
         doc.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         doc.PagePadding = new System.Windows.Thickness(0);
 
-        foreach (var block in doc.Blocks)
+        ApplyLineSpacing(doc.Blocks);
+    }
+
+    private static void ApplyLineSpacing(BlockCollection blocks)
+    {
+        foreach (var block in blocks)
         {
+            block.LineHeight = EditorLineHeight;
+            block.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+
             if (block is Paragraph p)
             {
-                p.LineHeight = 13;
-                p.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
                 p.Margin = new System.Windows.Thickness(0);
                 p.Padding = new System.Windows.Thickness(0);
+            }
+            else if (block is List list)
+            {
+                foreach (var listItem in list.ListItems)
+                    ApplyLineSpacing(listItem.Blocks);
             }
         }
     }
