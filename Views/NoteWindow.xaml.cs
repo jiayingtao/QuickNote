@@ -273,12 +273,9 @@ public partial class NoteWindow : Window
 
     private void TodoList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if ((e.OriginalSource as DependencyObject).FindVisualParent<System.Windows.Controls.CheckBox>() is not null)
-        {
-            _draggedItem = null;
-            return;
-        }
-        if ((e.OriginalSource as DependencyObject).FindVisualParent<System.Windows.Controls.TextBox>() is not null)
+        // 点在复选框或文本框上不触发拖拽
+        if ((e.OriginalSource as DependencyObject).FindVisualParent<System.Windows.Controls.CheckBox>() is not null ||
+            (e.OriginalSource as DependencyObject).FindVisualParent<System.Windows.Controls.TextBox>() is not null)
         {
             _draggedItem = null;
             return;
@@ -319,8 +316,8 @@ public partial class NoteWindow : Window
     {
         if (!_isDragging || _draggedItem is not TodoItem draggedTodo)
         {
-            // 非待办拖拽（如往便笺区拖文本）不拦截，保留控件默认拖放行为
-            RemoveInsertionAdorner();
+            // 非待办拖拽（如往便笺区拖文本）不拦截，保留控件默认拖放行为；
+            // 此时指示线必然不存在（只在待办拖拽期间创建，结束时已清理）
             return;
         }
         e.Handled = true;
@@ -360,11 +357,10 @@ public partial class NoteWindow : Window
         if (!_isDragging || _draggedItem is not TodoItem draggedTodo)
         {
             // 非待办拖拽不拦截
-            RemoveInsertionAdorner();
             return;
         }
         e.Handled = true;
-        RemoveInsertionAdorner();
+        // 指示线无需在此移除：Drop 后 DoDragDrop 返回处会统一清理
 
         var list = _vm.Todos;
         var oldIndex = list.IndexOf(draggedTodo);
