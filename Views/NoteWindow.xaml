@@ -19,7 +19,8 @@
     </Window.Resources>
 
     <Border x:Name="OuterBorder" Background="#FFF9E6" CornerRadius="8" BorderBrush="#E0D5A0" BorderThickness="1"
-            Margin="8">
+            Margin="8" AllowDrop="True"
+            PreviewDrop="TodoList_Drop" PreviewDragOver="TodoList_DragOver" PreviewDragLeave="TodoList_DragLeave">
         <Border.Effect>
             <DropShadowEffect BlurRadius="10" ShadowDepth="3" Opacity="0.3" Color="#888"/>
         </Border.Effect>
@@ -84,13 +85,12 @@
                 <DockPanel Grid.Row="0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel>
-                            <ItemsControl ItemsSource="{Binding Todos}" AllowDrop="True"
+                            <ItemsControl ItemsSource="{Binding Todos}"
                                       x:Name="TodoList"
                                       FocusVisualStyle="{x:Null}"
                                       PreviewMouseLeftButtonDown="TodoList_PreviewMouseLeftButtonDown"
                                       PreviewMouseLeftButtonUp="TodoList_PreviewMouseLeftButtonUp"
-                                      PreviewMouseMove="TodoList_PreviewMouseMove"
-                                      Drop="TodoList_Drop" DragOver="TodoList_DragOver">
+                                      PreviewMouseMove="TodoList_PreviewMouseMove">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="2,6">

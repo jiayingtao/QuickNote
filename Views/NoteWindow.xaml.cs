@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Linq;
 using System.Windows.Media;
@@ -14,6 +16,7 @@ public partial class NoteWindow : Window
     private Point _dragStartPoint;
     private object? _draggedItem;
     private bool _isDragging;
+    private InsertionAdorner? _insertionAdorner;
 
     public Action<string>? OnRequestNewNote { get; set; }
     public Action<NoteWindow>? OnRequestDelete { get; set; }
@@ -301,6 +304,7 @@ public partial class NoteWindow : Window
             var itemsControl = sender as ItemsControl;
             if (itemsControl is null) return;
             DragDrop.DoDragDrop(itemsControl, _draggedItem, DragDropEffects.Move);
+            RemoveInsertionAdorner();
             _isDragging = false;
             _draggedItem = null;
         }
@@ -308,27 +312,203 @@ public partial class NoteWindow : Window
 
     private void TodoList_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = DragDropEffects.Move;
+        if (!_isDragging || _draggedItem is not TodoItem draggedTodo)
+        {
+            // 非待办拖拽（如往便笺区拖文本）不拦截，保留控件默认拖放行为
+            RemoveInsertionAdorner();
+            return;
+        }
         e.Handled = true;
+
+        var oldIndex = _vm.Todos.IndexOf(draggedTodo);
+        var (insertIndex, lineY) = GetInsertionInfo(e, oldIndex);
+
+        // 插入位置与当前位置相同，等于没拖，隐藏指示线
+        if (insertIndex == oldIndex || insertIndex == oldIndex + 1)
+        {
+            e.Effects = DragDropEffects.None;
+            RemoveInsertionAdorner();
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        ShowInsertionAdorner(lineY);
+    }
+
+    private void TodoList_DragLeave(object sender, DragEventArgs e)
+    {
+        // e.GetPosition 在 DragLeave 中是过期坐标（OLE 回调无位置参数），
+        // 改用 GetCursorPos 取实时光标位置同步判断：仍在响应区内就是子元素间穿越，
+        // 不动 Adorner（避免销毁重建导致闪烁）；真离开才立即移除
+        if (!GetCursorPos(out var pt))
+        {
+            RemoveInsertionAdorner();
+            return;
+        }
+        var pos = OuterBorder.PointFromScreen(new Point(pt.X, pt.Y));
+        if (pos.X < 0 || pos.Y < 0 || pos.X >= OuterBorder.ActualWidth || pos.Y >= OuterBorder.ActualHeight)
+            RemoveInsertionAdorner();
     }
 
     private void TodoList_Drop(object sender, DragEventArgs e)
     {
-        if (!_isDragging || _draggedItem is not TodoItem draggedTodo) return;
-
-        var targetItem = (e.OriginalSource as DependencyObject)
-            .FindVisualParent<ContentPresenter>()?.DataContext as TodoItem;
-
-        if (targetItem is null || targetItem == draggedTodo) return;
+        if (!_isDragging || _draggedItem is not TodoItem draggedTodo)
+        {
+            // 非待办拖拽不拦截
+            RemoveInsertionAdorner();
+            return;
+        }
+        e.Handled = true;
+        RemoveInsertionAdorner();
 
         var list = _vm.Todos;
         var oldIndex = list.IndexOf(draggedTodo);
-        var newIndex = list.IndexOf(targetItem);
+        if (oldIndex < 0) return;
 
-        if (oldIndex < 0 || newIndex < 0) return;
+        var (insertIndex, _) = GetInsertionInfo(e, oldIndex);
+        if (insertIndex == oldIndex || insertIndex == oldIndex + 1) return;
+        if (oldIndex < insertIndex) insertIndex--;
 
-        list.Move(oldIndex, newIndex);
+        list.Move(oldIndex, insertIndex);
         _vm.ReorderTodos();
+    }
+
+    /// <summary>
+    /// 根据鼠标位置计算插入索引及指示线的 Y 坐标（相对 TodoList）：
+    /// 小幅度门限——鼠标在上邻居中线与下邻居中线之间时视为无法移动，
+    /// 返回原位索引（调用方据此显示禁止标识）；门限之外，在所有可移动目标位置中
+    /// 取与鼠标纵向距离最近者作为落点。
+    /// </summary>
+    private (int insertIndex, double lineY) GetInsertionInfo(DragEventArgs e, int oldIndex)
+    {
+        var pos = e.GetPosition(TodoList);
+        int count = TodoList.Items.Count;
+        if (count == 0) return (oldIndex, 0);
+
+        // 索引 k 的指示线位置：k < count 时为第 k 项顶边，k == count 时为末项底边
+        var lineYs = new double[count + 1];
+        var mids = new double[count];
+        for (int i = 0; i < count; i++)
+        {
+            if (TodoList.ItemContainerGenerator.ContainerFromIndex(i) is not ContentPresenter container)
+                return (oldIndex, 0);
+
+            double top = container.TranslatePoint(new Point(0, 0), TodoList).Y;
+            double height = container.ActualHeight;
+            lineYs[i] = top;
+            mids[i] = top + height / 2;
+            if (i == count - 1)
+                lineYs[count] = top + height;
+        }
+
+        // 小幅度门限：上邻居中线 ~ 下邻居中线，无邻居的一侧延伸到无穷远
+        double upperBound = oldIndex > 0 ? mids[oldIndex - 1] : double.NegativeInfinity;
+        double lowerBound = oldIndex >= 0 && oldIndex < count - 1 ? mids[oldIndex + 1] : double.PositiveInfinity;
+        if (pos.Y >= upperBound && pos.Y <= lowerBound)
+            return (oldIndex, 0);
+
+        // 门限之外：在所有可移动目标位置中取纵向距离最近者
+        int best = -1;
+        double bestDist = double.MaxValue;
+        for (int k = 0; k <= count; k++)
+        {
+            if (k == oldIndex || k == oldIndex + 1) continue; // 无操作位置不参与
+            double dist = Math.Abs(pos.Y - lineYs[k]);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = k;
+            }
+        }
+
+        return best < 0 ? (oldIndex, 0) : (best, lineYs[best]);
+    }
+
+    private void ShowInsertionAdorner(double lineY)
+    {
+        if (_insertionAdorner is null)
+        {
+            // 取窗口级 AdornerLayer（越过 ScrollViewer 内部图层），避免边缘位置被滚动视口裁剪
+            var layer = AdornerLayer.GetAdornerLayer(OuterBorder);
+            if (layer is null) return;
+            _insertionAdorner = new InsertionAdorner(TodoList);
+            layer.Add(_insertionAdorner);
+        }
+        _insertionAdorner.LineY = lineY;
+    }
+
+    private void RemoveInsertionAdorner()
+    {
+        if (_insertionAdorner is null) return;
+        AdornerLayer.GetAdornerLayer(OuterBorder)?.Remove(_insertionAdorner);
+        _insertionAdorner = null;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Win32Point lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Win32Point
+    {
+        public int X;
+        public int Y;
+    }
+}
+
+/// <summary>
+/// 拖拽排序时的插入位置指示线：一条水平线，两端带小三角。
+/// 绘制在 AdornerLayer 上，不参与布局和命中测试。
+/// </summary>
+internal sealed class InsertionAdorner : Adorner
+{
+    private static readonly Pen LinePen;
+    private static readonly SolidColorBrush LineBrush;
+    private double _lineY;
+
+    static InsertionAdorner()
+    {
+        LineBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8B, 0x7D, 0x5E));
+        LineBrush.Freeze();
+        LinePen = new Pen(LineBrush, 2);
+        LinePen.Freeze();
+    }
+
+    public InsertionAdorner(UIElement adornedElement) : base(adornedElement)
+    {
+        IsHitTestVisible = false;
+    }
+
+    public double LineY
+    {
+        get => _lineY;
+        set
+        {
+            if (Math.Abs(_lineY - value) < 0.5) return;
+            _lineY = value;
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        double width = AdornedElement.RenderSize.Width;
+        dc.DrawLine(LinePen, new Point(4, _lineY), new Point(width - 4, _lineY));
+        dc.DrawGeometry(LineBrush, null, CreateTriangle(4, _lineY, pointRight: true));
+        dc.DrawGeometry(LineBrush, null, CreateTriangle(width - 4, _lineY, pointRight: false));
+    }
+
+    private static StreamGeometry CreateTriangle(double x, double y, bool pointRight)
+    {
+        double dir = pointRight ? 1 : -1;
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(x, y - 4), isFilled: true, isClosed: true);
+            ctx.LineTo(new Point(x + dir * 5, y), false, false);
+            ctx.LineTo(new Point(x, y + 4), false, false);
+        }
+        geometry.Freeze();
+        return geometry;
     }
 }
 
