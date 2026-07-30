@@ -17,6 +17,8 @@ public partial class NoteWindow : Window
     private object? _draggedItem;
     private bool _isDragging;
     private InsertionAdorner? _insertionAdorner;
+    private DragSourceAdorner? _dragSourceAdorner;
+    private ContentPresenter? _dragSourceContainer;
 
     public Action<string>? OnRequestNewNote { get; set; }
     public Action<NoteWindow>? OnRequestDelete { get; set; }
@@ -303,7 +305,10 @@ public partial class NoteWindow : Window
             _isDragging = true;
             var itemsControl = sender as ItemsControl;
             if (itemsControl is null) return;
+            var container = TodoList.ItemContainerGenerator.ContainerFromItem(_draggedItem) as ContentPresenter;
+            ShowDragVisuals(container);
             DragDrop.DoDragDrop(itemsControl, _draggedItem, DragDropEffects.Move);
+            ClearDragVisuals();
             RemoveInsertionAdorner();
             _isDragging = false;
             _draggedItem = null;
@@ -444,6 +449,56 @@ public partial class NoteWindow : Window
         _insertionAdorner = null;
     }
 
+    /// <summary>
+    /// 拖拽开始时的源条目视觉标记：淡化源条目，并给其文字部分套虚线框。
+    /// </summary>
+    private void ShowDragVisuals(ContentPresenter? container)
+    {
+        if (container is null) return;
+        var layer = AdornerLayer.GetAdornerLayer(OuterBorder);
+        if (layer is null) return;
+
+        _dragSourceContainer = container;
+        container.Opacity = 0.4;
+
+        // 虚线框只框住文字内容：优先取显示文本的 TextBlock，找不到则退回整个条目
+        UIElement target = FindContentTextBlock(container) ?? (UIElement)container;
+        _dragSourceAdorner = new DragSourceAdorner(target);
+        layer.Add(_dragSourceAdorner);
+    }
+
+    /// <summary>
+    /// 在条目视觉树中找显示待办文本的 TextBlock：可见且可命中（排除 placeholder），
+    /// 且不在按钮内部（排除删除按钮的文本）。
+    /// </summary>
+    private static TextBlock? FindContentTextBlock(DependencyObject root)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is TextBlock tb && tb.Visibility == Visibility.Visible &&
+                tb.IsHitTestVisible && tb.FindVisualParent<System.Windows.Controls.Button>() is null)
+                return tb;
+            if (FindContentTextBlock(child) is TextBlock found)
+                return found;
+        }
+        return null;
+    }
+
+    private void ClearDragVisuals()
+    {
+        if (_dragSourceAdorner is not null)
+        {
+            AdornerLayer.GetAdornerLayer(OuterBorder)?.Remove(_dragSourceAdorner);
+            _dragSourceAdorner = null;
+        }
+        if (_dragSourceContainer is not null)
+        {
+            _dragSourceContainer.Opacity = 1.0;
+            _dragSourceContainer = null;
+        }
+    }
+
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out Win32Point lpPoint);
 
@@ -509,6 +564,41 @@ internal sealed class InsertionAdorner : Adorner
         }
         geometry.Freeze();
         return geometry;
+    }
+}
+
+/// <summary>
+/// 标记拖拽源条目的虚线圆角框，配合源条目淡化表示“正在被拖动”。
+/// </summary>
+internal sealed class DragSourceAdorner : Adorner
+{
+    private static readonly Pen DashPen;
+
+    static DragSourceAdorner()
+    {
+        var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8B, 0x7D, 0x5E));
+        brush.Freeze();
+        DashPen = new Pen(brush, 1.5) { DashStyle = new DashStyle(new double[] { 3, 2 }, 0) };
+        DashPen.Freeze();
+    }
+
+    public DragSourceAdorner(UIElement adornedElement) : base(adornedElement)
+    {
+        IsHitTestVisible = false;
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        var el = (FrameworkElement)AdornedElement;
+        // DesiredSize 是内容自然尺寸（含 Margin），据此收缩到实际文字宽高，不随列拉伸到行尾
+        double width = Math.Min(
+            Math.Max(el.DesiredSize.Width - el.Margin.Left - el.Margin.Right, 16),
+            el.RenderSize.Width);
+        double height = Math.Min(
+            el.DesiredSize.Height - el.Margin.Top - el.Margin.Bottom,
+            el.RenderSize.Height);
+        var rect = new Rect(-3, -1, width + 6, height + 2);
+        dc.DrawRoundedRectangle(null, DashPen, rect, 3, 3);
     }
 }
 
