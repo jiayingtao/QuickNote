@@ -191,6 +191,10 @@ public partial class App : Application
 
         _windows[note] = window;
         window.Show();
+
+        // 显示器配置变化（系统更新、分辨率/DPI 调整、拔插屏）可能使保存的坐标落到屏幕外
+        if (!ScreenService.IsOnAnyScreen(window))
+            ScreenService.MoveToPrimaryScreen(window);
     }
 
     private void CreateAndShowNewNote(string colorTheme = "Yellow")
@@ -205,6 +209,14 @@ public partial class App : Application
 
     private void ShowAllWindows()
     {
+        // 屏幕外窗口（显示器配置变化所致）先拉回主屏，再统一显示/错开/激活，
+        // 否则窗口 IsVisible 为 true，下面只会 Activate 而不移动，用户看起来就是"没反应"
+        foreach (var window in _windows.Values)
+        {
+            if (window.IsVisible && !ScreenService.IsOnAnyScreen(window))
+                ScreenService.MoveToPrimaryScreen(window);
+        }
+
         var visibleWindows = _windows.Values
             .Where(w => w.IsVisible && w.WindowState != WindowState.Minimized)
             .ToList();
